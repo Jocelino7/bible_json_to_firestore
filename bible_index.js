@@ -4,17 +4,17 @@ const fs = require('fs');
 const path = require('path');
 
 // --- CONFIGURAÇÃO ---
-const serviceAccount = require('./bible_ai_service_account.json'); 
+const serviceAccount = require('./bible_ai_service_account.json');
 const jsonFolderPath = path.join(__dirname, './json');
 // 1. Importa o objeto com todos os seus arrays de stopwords do arquivo stopwords.js
-const allStopwordsArrays = require('./bible_stop_word'); 
+const allStopwordsArrays = require('./stopwords.js');
 
 // --- INICIALIZAÇÃO DO FIREBASE (COM CORREÇÃO) ---
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
-  console.log('Firebase Admin inicializado com sucesso.');
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('Firebase Admin inicializado com sucesso.');
 }
 const db = admin.firestore();
 
@@ -51,14 +51,14 @@ async function main() {
             const currentStopwords = allStopwords[langCode] || new Set();
 
             console.log(`Indexando versão: ${versionId} (usando stopwords de '${langCode}')`);
-            
+
             const filePath = path.join(jsonFolderPath, file);
 
             // 3. Lógica para remover caracteres invisíveis (BOM)
             const fileContent = fs.readFileSync(filePath, 'utf8');
             const cleanContent = fileContent.replace(/^\uFEFF/, '');
             const bibleData = JSON.parse(cleanContent);
-            
+
             for (const book of bibleData) {
                 for (const chapterNum in book.chapters) {
                     const verses = book.chapters[chapterNum];
@@ -87,7 +87,7 @@ async function main() {
         console.log('Iniciando envio para o Firestore em lotes...');
 
         // Lógica de envio para o Firestore (sem alterações)
-        const batchSize = 400;
+        const batchSize = 100;
         const words = Object.keys(searchIndex);
         let batch = db.batch();
         let batchCount = 0;
@@ -100,10 +100,29 @@ async function main() {
             batchCount++;
 
             if (batchCount === batchSize || i === words.length - 1) {
-                await batch.commit();
+                let success = false;
+                let attempts = 0;
+                while (!success && attempts < 3) {
+                    try {
+                        await batch.commit();
+                        success = true; // Succeeded, exit the while loop
+                        console.log(`Lote ${Math.ceil((i + 1) / batchSize)} de ${totalBatches} enviado.`);
+                    } catch (e) {
+                        attempts++;
+                        // Error code 4 is DEADLINE_EXCEEDED
+                        if (e.code === 4 && attempts < 3) {
+                            console.warn(`-- Lote falhou por timeout (tentativa ${attempts}), tentando novamente em 5 segundos...`);
+                            await new Promise(resolve => setTimeout(resolve, 5000)); // Longer wait on retry
+                        } else {
+                            throw e; // If it's another error or max retries reached, re-throw to stop the script
+                        }
+                    }
+                }
                 console.log(`Lote ${Math.ceil((i + 1) / batchSize)} de ${totalBatches} enviado.`);
                 batch = db.batch();
                 batchCount = 0;
+                await new Promise(resolve => setTimeout(resolve, 300));
+
             }
         }
 
