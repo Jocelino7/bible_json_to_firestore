@@ -23,16 +23,7 @@ const db = admin.firestore();
  * @param {Object.<string, string[]>} stopwordArrays - O objeto com códigos de idioma e arrays.
  * @returns {Object.<string, Set<string>>} Um objeto mapeando códigos de idioma para um Set de stopwords.
  */
-function createStopwordSets(stopwordArrays) {
-    const allStopwordSets = {};
-    console.log('Carregando constantes de stopwords...');
-    for (const langCode in stopwordArrays) {
-        allStopwordSets[langCode] = new Set(stopwordArrays[langCode]);
-        console.log(`- Stopwords para '${langCode}' carregadas: ${allStopwordSets[langCode].size} palavras.`);
-    }
-    console.log('Todos os stopwords foram carregados.\n');
-    return allStopwordSets;
-}
+
 
 async function main() {
     try {
